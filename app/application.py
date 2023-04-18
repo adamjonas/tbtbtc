@@ -203,7 +203,7 @@ def process_mp3(filename):
             mimeType = mimetypes.MimeTypes().guess_type(filename)[0]
             source = {'buffer': audio, 'mimetype': mimeType}
             response = dg_client.transcription.sync_prerecorded(source, {'punctuate': True, 'speaker_labels': True,
-                                                                         'diarize': True, 'smart_formatting': True})
+                                                                         'diarize': True, 'smart_formatting': True, 'model': 'whisper-large'})
             para = ""
             string = ""
             curr_speaker = None
