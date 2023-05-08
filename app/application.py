@@ -15,6 +15,8 @@ from urllib.parse import urlparse, parse_qs
 import time
 from dotenv import dotenv_values
 import yt_dlp
+from deepgram import Deepgram
+import mimetypes
 
 
 def download_video(url):
@@ -151,7 +153,15 @@ def get_audio_file(url, title):
         return
 
 
-def process_mp3(filename, model):
+def decimal_to_sexagesimal(dec):
+    sec = int(dec % 60)
+    minu = int((dec // 60) % 60)
+    hrs = int((dec // 60) // 60)
+
+    return f'{hrs}:{minu}:{sec}'
+
+
+def process_whisper_mp3(filename, model):
     print("Transcribing audio to text...")
     try:
         my_model = whisper.load_model(model)
@@ -164,6 +174,45 @@ def process_mp3(filename, model):
     except Exception as e:
         print("Error transcribing audio to text")
         print(e)
+        return
+
+
+def process_deepgram_mp3(filename, model, multispeaker):
+    print("Transcribing audio to text...")
+    try:
+        config = dotenv_values(".env")
+        dg_client = Deepgram(config["DEEPGRAM_API_KEY"])
+
+        with open(filename, "rb") as audio:
+            mimeType = mimetypes.MimeTypes().guess_type(filename)[0]
+            source = {'buffer': audio, 'mimetype': mimeType}
+            response = dg_client.transcription.sync_prerecorded(source, {'punctuate': True, 'speaker_labels': True,
+                                                                         'diarize': multispeaker, 'smart_formatting': True})
+            string = ""
+            if multispeaker:
+                para = ""
+                curr_speaker = None
+                for word in response["results"]["channels"][0]["alternatives"][0]["words"]:
+                    if word["speaker"] != curr_speaker:
+                        if para != "":
+                            para = para.strip(" ")
+                            string = string + para + "\n\n"
+                        para = ""
+                        string = string + f'Speaker {word["speaker"]}: {decimal_to_sexagesimal(word["start"])}'
+                        curr_speaker = word["speaker"]
+                        string = string + '\n\n'
+
+                    para = para + " " + word["punctuated_word"]
+                para = para.strip(" ")
+                string = string + para
+            else:
+                string = response["results"]["channels"][0]["alternatives"][0]["transcript"]
+                print(string)
+            return string
+    except Exception as e:
+        print("Error transcribing audio to text")
+        print(f"Exception type: {type(e)}")
+        print(f"Exception details: {e}")
         return
 
 
@@ -301,7 +350,7 @@ def check_source_type(source):
 
 
 def process_audio(source, title, event_date, tags, category, speakers, loc, model, username, local,
-                  created_files, test, pr):
+                  created_files, test, pr, deepgram, multispeaker):
     try:
         print("audio file detected")
         curr_time = str(round(time.time() * 1000))
@@ -331,8 +380,11 @@ def process_audio(source, title, event_date, tags, category, speakers, loc, mode
         if test:
             result = test
         else:
-            result = process_mp3(abs_path, model)
-            result = create_transcript(result)
+            if deepgram:
+                result = process_deepgram_mp3(abs_path, model, multispeaker)
+            else:
+                result = process_whisper_mp3(abs_path, model)
+                result = create_transcript(result)
         absolute_path = get_md_file_path(result=result, loc=loc, video=source, title=title, event_date=event_date,
                                          tags=tags,
                                          category=category, speakers=speakers, username=username, local=local,
@@ -404,7 +456,7 @@ def combine_chapter(chapters, transcript):
 
 
 def process_video(video, title, event_date, tags, category, speakers, loc, model, username, created_files,
-                  chapters, test, pr, local=False):
+                  chapters, test, pr, local=False, deepgram=False, multispeaker=False):
     try:
         curr_time = str(round(time.time() * 1000))
         if not local:
@@ -436,7 +488,11 @@ def process_video(video, title, event_date, tags, category, speakers, loc, model
         elif test:
             chapters = read_description("test/testAssets/")
         convert_video_to_mp3(abs_path[:-4] + '.mp4')
-        result = process_mp3(abs_path[:-4] + ".mp3", model)
+        if deepgram:
+            result = process_deepgram_mp3(abs_path[:-4] + ".mp3", model, multispeaker)
+            print(result)
+        else:
+            result = process_whisper_mp3(abs_path[:-4] + ".mp3", model)
         created_files.append(abs_path[:-4] + ".mp3")
         if chapters and len(chapters) > 0:
             print("Chapters detected")
@@ -448,7 +504,7 @@ def process_video(video, title, event_date, tags, category, speakers, loc, model
             created_files.append("tmp/" + filename[:-4] + '.chapters')
         else:
             if not test:
-                result = create_transcript(result)
+                result = result
             else:
                 result = ""
         if not title:
@@ -466,11 +522,12 @@ def process_video(video, title, event_date, tags, category, speakers, loc, model
         return absolute_path
     except Exception as e:
         print("Error processing video")
-        print(e)
+        print(f"Exception type: {type(e)}")
+        print(f"Exception details: {e}")
 
 
 def process_source(source, title, event_date, tags, category, speakers, loc, model, username, source_type,
-                   created_files, chapters, local=False, test=None, pr=False):
+                   created_files, chapters, deepgram, multispeaker, local=False, test=None, pr=False):
     try:
         if not os.path.isdir("tmp"):
             os.mkdir("tmp")
@@ -481,25 +538,25 @@ def process_source(source, title, event_date, tags, category, speakers, loc, mod
         if source_type == 'audio':
             filename = process_audio(source=source, title=title, event_date=event_date, tags=tags, category=category,
                                      speakers=speakers, loc=loc, model=model, username=username,
-                                     local=local, created_files=created_files, test=test, pr=pr)
+                                     local=local, created_files=created_files, test=test, pr=pr, deepgram=deepgram, multispeaker=multispeaker)
         elif source_type == 'audio-local':
             filename = process_audio(source=source, title=title, event_date=event_date, tags=tags, category=category,
                                      speakers=speakers, loc=loc, model=model, username=username,
-                                     local=True, created_files=created_files, test=test, pr=pr)
+                                     local=True, created_files=created_files, test=test, pr=pr, deepgram=deepgram, multispeaker=multispeaker)
         elif source_type == 'playlist':
             filename = process_videos(source=source, title=title, event_date=event_date, tags=tags, category=category,
                                       speakers=speakers, loc=loc, model=model, username=username,
-                                      created_files=created_files, chapters=chapters, pr=pr)
+                                      created_files=created_files, chapters=chapters, pr=pr, deepgram=deepgram, multispeaker=multispeaker)
         elif source_type == 'video-local':
             filename = process_video(video=source, title=title, event_date=event_date,
                                      tags=tags, category=category, speakers=speakers, loc=loc, model=model,
                                      username=username, created_files=created_files, local=True,
-                                     chapters=chapters, test=test, pr=pr)
+                                     chapters=chapters, test=test, pr=pr, deepgram=deepgram, multispeaker=multispeaker)
         else:
             filename = process_video(video=source, title=title, event_date=event_date,
                                      tags=tags, category=category, speakers=speakers, loc=loc, model=model,
                                      username=username, created_files=created_files, local=local,
-                                     chapters=chapters, test=test, pr=pr)
+                                     chapters=chapters, test=test, pr=pr, deepgram=deepgram, multispeaker=multispeaker)
         return filename
     except Exception as e:
         print("Error processing source")

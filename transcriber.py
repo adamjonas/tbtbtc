@@ -32,6 +32,9 @@ def print_help(ctx, param, value):
 @click.option('-t', '--title', type=str,
               help="Supply transcribed file title in 'quotes', title is mandatory in case of audio files")
 @click.option('-d', '--date', type=str, help="Supply the event date in format 'yyyy-mm-dd'")
+@click.option('-D', '--deepgram', is_flag=True, default=False, help="Use deepgram for transcription")
+@click.option('-M', '--multispeaker', is_flag=True, default=False,
+              help="Use deepgram diarization for transcription")
 @click.option('-T', '--tags', type=str, help="Supply the tags for the transcript in 'quotes' and separated by commas")
 @click.option('-s', '--speakers', type=str, help="Supply the speakers for the transcript in 'quotes' and separated by "
                                                  "commas")
@@ -54,7 +57,9 @@ def add(
         speakers: str,
         category: str,
         chapters: bool,
-        pr: bool
+        pr: bool,
+        deepgram: bool,
+        multispeaker: bool
 ) -> None:
     """Supply a YouTube video id and directory for transcription. \n
        Note: The https links need to be wrapped in quotes when running the command on zsh
@@ -77,7 +82,7 @@ def add(
             return
         filename = application.process_source(source=source, title=title, event_date=event_date, tags=tags,
                                               category=category, speakers=speakers, loc=loc, model=model,
-                                              username=username, chapters=chapters, pr=pr,
+                                              username=username, chapters=chapters, deepgram=deepgram, multispeaker=multispeaker, pr=pr,
                                               source_type=source_type, created_files=created_files)
         if filename:
             """ INITIALIZE GIT AND OPEN A PR"""
