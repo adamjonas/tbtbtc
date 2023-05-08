@@ -179,6 +179,7 @@ def process_whisper_mp3(filename, model):
 
 def process_deepgram_mp3(filename, model, multispeaker):
     print("Transcribing audio to text...")
+    model = 'whisper-'+ model or 'whisper-tiny'
     try:
         config = dotenv_values(".env")
         dg_client = Deepgram(config["DEEPGRAM_API_KEY"])
@@ -187,7 +188,7 @@ def process_deepgram_mp3(filename, model, multispeaker):
             mimeType = mimetypes.MimeTypes().guess_type(filename)[0]
             source = {'buffer': audio, 'mimetype': mimeType}
             response = dg_client.transcription.sync_prerecorded(source, {'punctuate': True, 'speaker_labels': True,
-                                                                         'diarize': multispeaker, 'smart_formatting': True})
+                                                                         'diarize': multispeaker, 'smart_formatting': True, 'model': model})
             string = ""
             if multispeaker:
                 para = ""
@@ -207,7 +208,6 @@ def process_deepgram_mp3(filename, model, multispeaker):
                 string = string + para
             else:
                 string = response["results"]["channels"][0]["alternatives"][0]["transcript"]
-                print(string)
             return string
     except Exception as e:
         print("Error transcribing audio to text")
@@ -227,7 +227,7 @@ def create_transcript(data):
 def initialize():
     try:
         print('''
-        This tool will convert Youtube videos to mp3 files and then transcribe them to text using Whisper.
+        This tool will convert Youtube videos to mp3 files and then transcribe them to text.
         ''')
         # FFMPEG installed on first use.
         print("Initializing FFMPEG...")
