@@ -17,6 +17,7 @@ from dotenv import dotenv_values
 import yt_dlp
 from deepgram import Deepgram
 import mimetypes
+import time
 
 
 def download_video(url):
@@ -256,11 +257,12 @@ def combine_deepgram_chapters_with_diarization(deepgram_data, chapters):
         print(e)
 
 
-def get_deepgram_transcript(deepgram_data, diarize):
+def get_deepgram_transcript(deepgram_data, diarize, filename) :
     if diarize:
         para = ""
         string = ""
         curr_speaker = None
+        save_local_json(deepgram_data, filename)
         for word in deepgram_data["results"]["channels"][0]["alternatives"][0]["words"]:
             if word["speaker"] != curr_speaker:
                 if para != "":
@@ -276,6 +278,7 @@ def get_deepgram_transcript(deepgram_data, diarize):
         string = string + para
         return string
     else:
+        save_local_json(deepgram_data, filename)
         return deepgram_data["results"]["channels"][0]["alternatives"][0]["transcript"]
 
 
@@ -482,7 +485,7 @@ def process_audio(source, title, event_date, tags, category, speakers, loc, mode
         else:
             if deepgram or summarize:
                 deepgram_resp = process_mp3_deepgram(filename=abs_path, summarize=summarize, diarize=diarize)
-                result = get_deepgram_transcript(deepgram_data=deepgram_resp, diarize=diarize)
+                result = get_deepgram_transcript(deepgram_data=deepgram_resp, diarize=diarize, filename=filename)
                 if summarize:
                     summary = get_deepgram_summary(deepgram_data=deepgram_resp)
             if not deepgram:
@@ -601,7 +604,7 @@ def process_video(video, title, event_date, tags, category, speakers, loc, model
         convert_video_to_mp3(abs_path[:-4] + '.mp4')
         if deepgram or summarize:
             deepgram_data = process_mp3_deepgram(abs_path[:-4] + ".mp3", summarize=summarize, diarize=diarize)
-            result = get_deepgram_transcript(deepgram_data=deepgram_data, diarize=diarize)
+            result = get_deepgram_transcript(deepgram_data=deepgram_data, diarize=diarize, filename=filename)
             if summarize:
                 print("Summarizing")
                 summary = get_deepgram_summary(deepgram_data=deepgram_data)
@@ -696,6 +699,15 @@ def clean_up(created_files):
         if os.path.isfile(file):
             os.remove(file)
     shutil.rmtree("tmp")
+
+
+def save_local_json(json_data, filename):
+    print("Saving Locally...")
+    time_in_str = str(int(time.time()))
+    base_filename, _ = os.path.splitext(filename)
+    file_path = os.path.join('./', base_filename + '_' + time_in_str + '.json')
+    with open(file_path, 'w') as json_file:
+        json.dump(json_data, json_file, indent=4)
 
 
 def generate_payload(loc, title, event_date, tags, category, speakers, username, media, transcript, test):
